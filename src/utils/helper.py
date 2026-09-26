@@ -25,16 +25,28 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
-def _create_token(user_id: int, expire_minutes: int, token_type: str):
+def _create_token(user_id: int, expire_minutes: int, token_type: str, extra: dict = None):
     jti = str(uuid.uuid4())
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=expire_minutes)
     payload = {"sub": str(user_id), "jti": jti, "type": token_type, "exp": expires_at}
+    if extra:
+        payload.update(extra)
     token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
     return token, jti, expires_at
 
 
-def create_access_token(user_id: int) -> str:
-    token, _, _ = _create_token(user_id, ACCESS_TOKEN_EXPIRE_MINUTES, "access")
+def create_access_token(user_id: int, permissions: list[str] = None) -> str:
+    # `permissions` is embedded directly in the JWT so the Next.js edge
+    # middleware can read it without hitting the DB. Always pass the
+    # user's CURRENT role permissions when minting this (login + refresh).
+    # The backend itself never trusts this claim for authorization -- see
+    # src/team/permissions.py::require_permission, which re-checks the DB.
+    token, _, _ = _create_token(
+        user_id,
+        ACCESS_TOKEN_EXPIRE_MINUTES,
+        "access",
+        extra={"permissions": permissions or []},
+    )
     return token
 
 
@@ -71,7 +83,7 @@ def clear_auth_cookies(response: Response):
     response.delete_cookie(key=REFRESH_COOKIE_NAME, path="/")
 
 
-def get_current_user(request: Request, db: Session = Depends(get_db)):
+def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     token = request.cookies.get(ACCESS_COOKIE_NAME)
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")

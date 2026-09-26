@@ -11,6 +11,46 @@ from src.email.email_service import send_email
 from src.email.templates.otp_template import otp_email
 from src.email.templates.resend_otp_template import resend_otp_email
 from src.email.templates.signup_success_template import signup_success_email
+from src.team.model import Member, Role
+
+
+def _get_or_create_owner_role(db: Session) -> Role:
+    role = db.query(Role).filter(Role.name == "Owner").first()
+    if role:
+        return role
+
+    role = Role(
+        name="Owner",
+        description="Full access to the workspace. Assigned automatically to the account creator.",
+        permissions=["*"],
+    )
+    db.add(role)
+    db.commit()
+    db.refresh(role)
+    return role
+
+
+def _serialize_session_user(db: Session, user: User) -> dict:
+    """
+    Builds the {user, permissions} shape the frontend dispatches into
+    userSlice/accessSlice after login, on refresh, and from /users/me.
+    Always pulled fresh from the DB so it reflects the user's current
+    role even if it was edited after they last logged in.
+    """
+    membership = db.query(Member).filter(Member.user_id == user.id, Member.status == "active").first()
+    role = db.query(Role).filter(Role.id == membership.role_id).first() if membership else None
+    permissions = role.permissions if role else []
+
+    return {
+        "user": {
+            "user_id": user.id,
+            "user_name": user.FullName,
+            "user_email": user.email,
+            "role_id": role.id if role else None,
+            "role_name": role.name if role else None,
+        },
+        "permissions": permissions,
+    }
 
 
 def create_user(db: Session, user: UserCreate):
@@ -22,6 +62,10 @@ def create_user(db: Session, user: UserCreate):
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+
+    owner_role = _get_or_create_owner_role(db)
+    db.add(Member(user_id=new_user.id, role_id=owner_role.id, status="active"))
+    db.commit()
 
     subject, html, text = signup_success_email(new_user.FullName, new_user.email)
     send_email(new_user.email, subject, html, text)
@@ -71,9 +115,16 @@ def verify_otp(db: Session, email: str, otp: str):
     db.delete(record)
     db.commit()
 
-    access_token = create_access_token(user.id)
+    session = _serialize_session_user(db, user)
+
+    access_token = create_access_token(user.id, session["permissions"])
     refresh_token = create_refresh_token(db, user.id)
-    return {"access_token": access_token, "refresh_token": refresh_token}
+
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        **session,
+    }
 
 
 def refresh_access_token(db: Session, refresh_token: str) -> str:
@@ -90,7 +141,14 @@ def refresh_access_token(db: Session, refresh_token: str) -> str:
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials")
 
-    return create_access_token(user.id)
+    # Re-pull permissions fresh so a refreshed access token reflects any
+    # role edits made since the user's last login, not stale ones.
+    session = _serialize_session_user(db, user)
+    return create_access_token(user.id, session["permissions"])
+
+
+def get_me(db: Session, user: User) -> dict:
+    return _serialize_session_user(db, user)
 
 
 def logout(db: Session, jti: str, expires_at):
