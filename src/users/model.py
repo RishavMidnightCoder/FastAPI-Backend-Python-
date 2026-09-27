@@ -12,6 +12,7 @@ class User(Base):
     hashed_password = Column(String, nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    workspace_name = Column(String, nullable=True)  # only meaningful on the owner's own row
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class OTP(Base):

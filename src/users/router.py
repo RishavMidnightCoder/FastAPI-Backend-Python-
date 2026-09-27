@@ -78,3 +78,16 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
 
     clear_auth_cookies(response)
     return {"message": "Logged out"}
+
+
+
+@router.get("/sessions/count")
+def get_session_count(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return {"count": controller.count_active_sessions(db, current_user.id)}
+
+
+@router.post("/sessions/revoke-all")
+def revoke_all_sessions(response: Response, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    controller.revoke_all_sessions(db, current_user.id)
+    clear_auth_cookies(response)
+    return {"message": "Signed out of all devices"}

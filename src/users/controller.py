@@ -191,3 +191,20 @@ def logout(db: Session, jti: str, expires_at):
 def revoke_refresh_token(db: Session, jti: str):
     db.query(RefreshToken).filter(RefreshToken.jti == jti).update({"revoked": True})
     db.commit()
+    
+
+def count_active_sessions(db: Session, user_id: int) -> int:
+    return (
+        db.query(RefreshToken)
+        .filter(
+            RefreshToken.user_id == user_id,
+            RefreshToken.revoked == False,
+            RefreshToken.expires_at > datetime.now(timezone.utc),
+        )
+        .count()
+    )
+
+
+def revoke_all_sessions(db: Session, user_id: int):
+    db.query(RefreshToken).filter(RefreshToken.user_id == user_id).update({"revoked": True})
+    db.commit()    

@@ -10,6 +10,7 @@ from src.project.router import router as project_router
 from src.team.router import router as team_router
 from src.role.router import router as role_router
 from fastapi.staticfiles import StaticFiles
+from src.workspace.router import router as workspace_router
 
 
 Base.metadata.create_all(bind=engine)
@@ -29,6 +30,7 @@ app.include_router(task_router)
 app.include_router(project_router)
 app.include_router(team_router)
 app.include_router(role_router)
+app.include_router(workspace_router)
 
 os.makedirs("uploads/tasks", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
