@@ -7,10 +7,10 @@ from src.users.model import User
 from src.team.model import Member, Role
 
 
-def get_active_membership(db: Session, user_id: int) -> Member:
+def get_active_membership(db: Session, user_id: int, owner_id: int) -> Member:
     membership = (
         db.query(Member)
-        .filter(Member.user_id == user_id, Member.status == "active")
+        .filter(Member.user_id == user_id, Member.owner_id == owner_id, Member.status == "active")
         .first()
     )
     if not membership:
@@ -21,10 +21,10 @@ def get_active_membership(db: Session, user_id: int) -> Member:
     return membership
 
 
-def get_user_permissions(db: Session, user_id: int) -> list[str]:
+def get_user_permissions(db: Session, user_id: int, owner_id: int) -> list[str]:
     membership = (
         db.query(Member)
-        .filter(Member.user_id == user_id, Member.status == "active")
+        .filter(Member.user_id == user_id, Member.owner_id == owner_id, Member.status == "active")
         .first()
     )
     if not membership:
@@ -52,7 +52,7 @@ def require_permission(permission: str):
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user),
     ) -> User:
-        membership = get_active_membership(db, current_user.id)
+        membership = get_active_membership(db, current_user.id, current_user.owner_id)
         role = db.query(Role).filter(Role.id == membership.role_id).first()
         if not role or ("*" not in role.permissions and permission not in role.permissions):
             raise HTTPException(

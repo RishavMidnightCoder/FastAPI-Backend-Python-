@@ -12,32 +12,32 @@ router = APIRouter(prefix="/projects", tags=["Projects"])
 
 @router.post("/", response_model=ProjectOut)
 def create_project(payload: ProjectCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return controller.create_project(db, payload)
+    return controller.create_project(db, payload, current_user.owner_id)
 
 @router.get("/", response_model=List[ProjectOut])
 def list_projects(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return controller.list_projects(db)
+    return controller.list_projects(db, current_user.owner_id)
 
 @router.get("/{project_id}", response_model=ProjectOut)
 def get_project(project_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return controller.get_project(db, project_id)
+    return controller.get_project(db, project_id, current_user.owner_id)
 
 @router.patch("/{project_id}", response_model=ProjectOut)
 def update_project(project_id: int, payload: ProjectUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return controller.update_project(db, project_id, payload)
+    return controller.update_project(db, project_id, payload, current_user.owner_id)
 
 @router.delete("/{project_id}")
 def delete_project(project_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return controller.delete_project(db, project_id)
+    return controller.delete_project(db, project_id, current_user.owner_id)
 
 @router.get("/{project_id}/members", response_model=List[ProjectMemberOut])
 def list_project_members(project_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return controller.list_project_members(db, project_id)
+    return controller.list_project_members(db, project_id, current_user.owner_id)
 
 @router.post("/{project_id}/members", response_model=ProjectOut)
 def add_project_member(project_id: int, payload: AddProjectMemberRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return controller.add_project_member(db, project_id, payload)
+    return controller.add_project_member(db, project_id, payload, current_user.owner_id)
 
 @router.delete("/{project_id}/members/{member_id}", response_model=ProjectOut)
 def remove_project_member(project_id: int, member_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return controller.remove_project_member(db, project_id, member_id)
+    return controller.remove_project_member(db, project_id, member_id, current_user.owner_id)

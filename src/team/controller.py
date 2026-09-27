@@ -24,22 +24,23 @@ def _serialize_member(member, user, role):
     }
 
 
-def list_members(db: Session):
+def list_members(db: Session, owner_id: int):
     rows = (
         db.query(Member, User, Role)
         .join(User, Member.user_id == User.id)
         .join(Role, Member.role_id == Role.id)
+        .filter(Member.owner_id == owner_id)
         .all()
     )
     return [_serialize_member(m, u, r) for m, u, r in rows]
 
 
-def get_member(db: Session, member_id: int):
+def get_member(db: Session, member_id: int, owner_id: int):
     row = (
         db.query(Member, User, Role)
         .join(User, Member.user_id == User.id)
         .join(Role, Member.role_id == Role.id)
-        .filter(Member.id == member_id)
+        .filter(Member.id == member_id, Member.owner_id == owner_id)
         .first()
     )
     if not row:
@@ -47,16 +48,15 @@ def get_member(db: Session, member_id: int):
     return _serialize_member(*row)
 
 
-def invite_member(db: Session, payload, current_user_email: str = None):
-    if current_user_email and payload.email.lower() == current_user_email.lower():
+def invite_member(db: Session, payload, current_user: User):
+    if payload.email.lower() == current_user.email.lower():
         raise HTTPException(status_code=400, detail="You cannot invite yourself")
 
-    role = db.query(Role).filter(Role.id == payload.role_id).first()
+    role = db.query(Role).filter(Role.id == payload.role_id, Role.owner_id == current_user.owner_id).first()
     if not role:
         raise HTTPException(status_code=400, detail="Role does not exist")
 
-    inviter = db.query(User).filter(User.email == current_user_email).first() if current_user_email else None
-    inviter_name = (inviter.FullName if inviter and inviter.FullName else current_user_email) or "A Nivora admin"
+    inviter_name = current_user.FullName or current_user.email or "A Nivora admin"
 
     user = db.query(User).filter(User.email == payload.email).first()
 
@@ -64,12 +64,18 @@ def invite_member(db: Session, payload, current_user_email: str = None):
         raise HTTPException(status_code=400, detail="This email is already registered on the platform")
 
     if not user:
-        user = User(FullName=None, email=payload.email, hashed_password=None, is_active=False)
+        user = User(
+            FullName=None,
+            email=payload.email,
+            hashed_password=None,
+            is_active=False,
+            owner_id=current_user.owner_id,
+        )
         db.add(user)
         db.commit()
         db.refresh(user)
 
-    existing = db.query(Member).filter(Member.user_id == user.id).first()
+    existing = db.query(Member).filter(Member.user_id == user.id, Member.owner_id == current_user.owner_id).first()
 
     if existing:
         existing.role_id = role.id
@@ -86,7 +92,13 @@ def invite_member(db: Session, payload, current_user_email: str = None):
         return {"message": "Invite resent"}
 
     invite_token = secrets.token_urlsafe(32)
-    db.add(Member(user_id=user.id, role_id=role.id, status="pending", invite_token=invite_token))
+    db.add(Member(
+        user_id=user.id,
+        role_id=role.id,
+        status="pending",
+        invite_token=invite_token,
+        owner_id=current_user.owner_id,
+    ))
     db.commit()
 
     invite_link = f"{FRONTEND_BASE_URL}/invite/create-password?token={invite_token}"
@@ -115,8 +127,8 @@ def accept_invite(db: Session, token: str, payload):
     return {"message": "Invite accepted, account activated"}
 
 
-def cancel_invite(db: Session, member_id: int):
-    membership = db.query(Member).filter(Member.id == member_id).first()
+def cancel_invite(db: Session, member_id: int, owner_id: int):
+    membership = db.query(Member).filter(Member.id == member_id, Member.owner_id == owner_id).first()
     if not membership:
         raise HTTPException(status_code=404, detail="Member not found")
     if membership.status != "pending":
@@ -132,24 +144,26 @@ def cancel_invite(db: Session, member_id: int):
         subject, html, text = invite_cancel_email(user.email)
         send_email(user.email, subject, html, text)
 
-    return get_member(db, member_id)
-def update_member(db: Session, member_id: int, payload):
-    membership = db.query(Member).filter(Member.id == member_id).first()
+    return get_member(db, member_id, owner_id)
+
+
+def update_member(db: Session, member_id: int, payload, owner_id: int):
+    membership = db.query(Member).filter(Member.id == member_id, Member.owner_id == owner_id).first()
     if not membership:
         raise HTTPException(status_code=404, detail="Member not found")
 
     if payload.role_id is not None:
-        role = db.query(Role).filter(Role.id == payload.role_id).first()
+        role = db.query(Role).filter(Role.id == payload.role_id, Role.owner_id == owner_id).first()
         if not role:
             raise HTTPException(status_code=400, detail="Role not found")
         membership.role_id = payload.role_id
 
     db.commit()
-    return get_member(db, member_id)
+    return get_member(db, member_id, owner_id)
 
 
-def toggle_status(db: Session, member_id: int):
-    membership = db.query(Member).filter(Member.id == member_id).first()
+def toggle_status(db: Session, member_id: int, owner_id: int):
+    membership = db.query(Member).filter(Member.id == member_id, Member.owner_id == owner_id).first()
     if not membership:
         raise HTTPException(status_code=404, detail="Member not found")
     if membership.status == "pending":
@@ -163,11 +177,11 @@ def toggle_status(db: Session, member_id: int):
 
     membership.status = "deactivated"
     db.commit()
-    return get_member(db, member_id)
+    return get_member(db, member_id, owner_id)
 
 
-def remove_member(db: Session, member_id: int):
-    membership = db.query(Member).filter(Member.id == member_id).first()
+def remove_member(db: Session, member_id: int, owner_id: int):
+    membership = db.query(Member).filter(Member.id == member_id, Member.owner_id == owner_id).first()
     if not membership:
         raise HTTPException(status_code=404, detail="Member not found")
 

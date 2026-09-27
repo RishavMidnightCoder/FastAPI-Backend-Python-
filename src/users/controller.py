@@ -14,8 +14,8 @@ from src.email.templates.signup_success_template import signup_success_email
 from src.team.model import Member, Role
 
 
-def _get_or_create_owner_role(db: Session) -> Role:
-    role = db.query(Role).filter(Role.name == "Owner").first()
+def _get_or_create_owner_role(db: Session, owner_id: int) -> Role:
+    role = db.query(Role).filter(Role.owner_id == owner_id, Role.name == "Owner").first()
     if role:
         return role
 
@@ -23,6 +23,7 @@ def _get_or_create_owner_role(db: Session) -> Role:
         name="Owner",
         description="Full access to the workspace. Assigned automatically to the account creator.",
         permissions=["*"],
+        owner_id=owner_id,
     )
     db.add(role)
     db.commit()
@@ -37,7 +38,11 @@ def _serialize_session_user(db: Session, user: User) -> dict:
     Always pulled fresh from the DB so it reflects the user's current
     role even if it was edited after they last logged in.
     """
-    membership = db.query(Member).filter(Member.user_id == user.id, Member.status == "active").first()
+    membership = (
+        db.query(Member)
+        .filter(Member.user_id == user.id, Member.owner_id == user.owner_id, Member.status == "active")
+        .first()
+    )
     role = db.query(Role).filter(Role.id == membership.role_id).first() if membership else None
     permissions = role.permissions if role else []
 
@@ -63,8 +68,12 @@ def create_user(db: Session, user: UserCreate):
     db.commit()
     db.refresh(new_user)
 
-    owner_role = _get_or_create_owner_role(db)
-    db.add(Member(user_id=new_user.id, role_id=owner_role.id, status="active"))
+    new_user.owner_id = new_user.id
+    db.commit()
+    db.refresh(new_user)
+
+    owner_role = _get_or_create_owner_role(db, new_user.owner_id)
+    db.add(Member(user_id=new_user.id, role_id=owner_role.id, status="active", owner_id=new_user.owner_id))
     db.commit()
 
     subject, html, text = signup_success_email(new_user.FullName, new_user.email)
@@ -94,6 +103,22 @@ def _generate_and_store_otp(db: Session, email: str, is_resend: bool = False):
 
 
 def login(db: Session, email: str):
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="No account found with this email")
+
+    membership = db.query(Member).filter(Member.user_id == user.id).first()
+    if membership and membership.status == "pending":
+        raise HTTPException(
+            status_code=403,
+            detail="Your invite is still pending. Please check your email to activate your account.",
+        )
+    if membership and membership.status == "deactivated":
+        raise HTTPException(
+            status_code=403,
+            detail="Your account is not active. Please contact your admin.",
+        )
+
     _generate_and_store_otp(db, email)
     return {"message": "OTP sent to your email"}
 
@@ -111,6 +136,12 @@ def verify_otp(db: Session, email: str, otp: str):
     user = db.query(User).filter(User.email == email).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    membership = db.query(Member).filter(Member.user_id == user.id).first()
+    if membership and membership.status == "pending":
+        raise HTTPException(status_code=403, detail="Your invite is still pending. Please check your email to activate your account.")
+    if membership and membership.status == "deactivated":
+        raise HTTPException(status_code=403, detail="Your account is not active. Please contact your admin.")
 
     db.delete(record)
     db.commit()

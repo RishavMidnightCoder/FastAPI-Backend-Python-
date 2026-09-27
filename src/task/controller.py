@@ -23,24 +23,24 @@ def _validate_status_priority(status: str, priority: str):
         raise HTTPException(status_code=400, detail=f"Invalid priority: {priority}")
 
 
-def _get_project_or_404(db: Session, project_id: int) -> Project:
-    project = db.query(Project).filter(Project.id == project_id).first()
+def _get_project_or_404(db: Session, project_id: int, owner_id: int) -> Project:
+    project = db.query(Project).filter(Project.id == project_id, Project.owner_id == owner_id).first()
     if not project:
         raise HTTPException(status_code=400, detail="Project does not exist")
     return project
 
 
-def _validate_assignee(db: Session, assignee_id: int | None):
+def _validate_assignee(db: Session, assignee_id: int | None, owner_id: int):
     if assignee_id is None:
         return
-    member = db.query(Member).filter(Member.id == assignee_id).first()
+    member = db.query(Member).filter(Member.id == assignee_id, Member.owner_id == owner_id).first()
     if not member:
         raise HTTPException(status_code=400, detail="Assignee is not a valid team member")
 
 
-def _generate_task_code(db: Session, project_name: str) -> str:
+def _generate_task_code(db: Session, project_name: str, owner_id: int) -> str:
     prefix = "".join(ch for ch in project_name.upper() if ch.isalnum())[:4] or "TASK"
-    count = db.query(Task).filter(Task.code.like(f"{prefix}-%")).count()
+    count = db.query(Task).filter(Task.owner_id == owner_id, Task.code.like(f"{prefix}-%")).count()
     return f"{prefix}-{100 + count + 1}"
 
 
@@ -78,14 +78,15 @@ def _serialize_task(db: Session, task: Task):
     }
 
 
-def create_task(db: Session, payload):
+def create_task(db: Session, payload, owner_id: int):
     _validate_status_priority(payload.status, payload.priority)
-    project = _get_project_or_404(db, payload.project_id)
-    _validate_assignee(db, payload.assignee_id)
+    project = _get_project_or_404(db, payload.project_id, owner_id)
+    _validate_assignee(db, payload.assignee_id, owner_id)
 
-    code = _generate_task_code(db, project.name)
+    code = _generate_task_code(db, project.name, owner_id)
 
     task = Task(
+        owner_id=owner_id,
         code=code,
         title=payload.title,
         description=payload.description,
@@ -101,24 +102,24 @@ def create_task(db: Session, payload):
     return _serialize_task(db, task)
 
 
-def list_tasks(db: Session):
-    tasks = db.query(Task).order_by(Task.created_at.desc()).all()
+def list_tasks(db: Session, owner_id: int):
+    tasks = db.query(Task).filter(Task.owner_id == owner_id).order_by(Task.created_at.desc()).all()
     return [_serialize_task(db, t) for t in tasks]
 
 
-def get_task(db: Session, task_id: int):
-    task = db.query(Task).filter(Task.id == task_id).first()
+def get_task(db: Session, task_id: int, owner_id: int):
+    task = db.query(Task).filter(Task.id == task_id, Task.owner_id == owner_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return _serialize_task(db, task)
 
 
-def update_task(db: Session, task_id: int, payload):
+def update_task(db: Session, task_id: int, payload, owner_id: int):
     _validate_status_priority(payload.status, payload.priority)
-    _get_project_or_404(db, payload.project_id)
-    _validate_assignee(db, payload.assignee_id)
+    _get_project_or_404(db, payload.project_id, owner_id)
+    _validate_assignee(db, payload.assignee_id, owner_id)
 
-    task = db.query(Task).filter(Task.id == task_id).first()
+    task = db.query(Task).filter(Task.id == task_id, Task.owner_id == owner_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
@@ -135,19 +136,17 @@ def update_task(db: Session, task_id: int, payload):
     return _serialize_task(db, task)
 
 
-def delete_task(db: Session, task_id: int):
-    task = db.query(Task).filter(Task.id == task_id).first()
+def delete_task(db: Session, task_id: int, owner_id: int):
+    task = db.query(Task).filter(Task.id == task_id, Task.owner_id == owner_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    # remove physical files for all attachments before the task (and its
-    # attachment rows) are deleted
     attachments = db.query(TaskAttachment).filter(TaskAttachment.task_id == task_id).all()
     for attachment in attachments:
         if os.path.exists(attachment.file_path):
             os.remove(attachment.file_path)
 
-    db.delete(task)  # cascade="all, delete-orphan" removes attachment rows too
+    db.delete(task)
     db.commit()
     return {"message": "Task deleted"}
 
@@ -167,8 +166,8 @@ def _serialize_attachment(attachment: TaskAttachment):
     }
 
 
-async def add_attachment(db: Session, task_id: int, file: UploadFile):
-    task = db.query(Task).filter(Task.id == task_id).first()
+async def add_attachment(db: Session, task_id: int, file: UploadFile, owner_id: int):
+    task = db.query(Task).filter(Task.id == task_id, Task.owner_id == owner_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
@@ -203,8 +202,8 @@ async def add_attachment(db: Session, task_id: int, file: UploadFile):
     return _serialize_attachment(attachment)
 
 
-def list_attachments(db: Session, task_id: int):
-    task = db.query(Task).filter(Task.id == task_id).first()
+def list_attachments(db: Session, task_id: int, owner_id: int):
+    task = db.query(Task).filter(Task.id == task_id, Task.owner_id == owner_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
@@ -212,7 +211,11 @@ def list_attachments(db: Session, task_id: int):
     return [_serialize_attachment(a) for a in attachments]
 
 
-def delete_attachment(db: Session, task_id: int, attachment_id: int):
+def delete_attachment(db: Session, task_id: int, attachment_id: int, owner_id: int):
+    task = db.query(Task).filter(Task.id == task_id, Task.owner_id == owner_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
     attachment = (
         db.query(TaskAttachment)
         .filter(TaskAttachment.id == attachment_id, TaskAttachment.task_id == task_id)

@@ -13,23 +13,23 @@ router = APIRouter(prefix="/members", tags=["Members"])
 
 
 @router.get("/", response_model=List[MemberOut], dependencies=[Depends(require_permission("view_members"))])
-def list_members(db: Session = Depends(get_db)):
-    return controller.list_members(db)
+def list_members(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return controller.list_members(db, current_user.owner_id)
 
 
 @router.get("/{member_id}", response_model=MemberOut, dependencies=[Depends(require_permission("view_members"))])
-def get_member(member_id: int, db: Session = Depends(get_db)):
-    return controller.get_member(db, member_id)
+def get_member(member_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return controller.get_member(db, member_id, current_user.owner_id)
 
 
 @router.post("/invite", dependencies=[Depends(require_permission("create_members"))])
 def invite_member(payload: InviteMemberRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return controller.invite_member(db, payload, current_user.email)
+    return controller.invite_member(db, payload, current_user)
 
 
 @router.patch("/{member_id}/cancel-invite", response_model=MemberOut, dependencies=[Depends(require_permission("delete_members"))])
-def cancel_invite(member_id: int, db: Session = Depends(get_db)):
-    return controller.cancel_invite(db, member_id)
+def cancel_invite(member_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return controller.cancel_invite(db, member_id, current_user.owner_id)
 
 
 @router.post("/invites/{token}/accept")
@@ -40,15 +40,15 @@ def accept_invite(token: str, payload: AcceptInviteRequest, db: Session = Depend
 
 
 @router.patch("/{member_id}", response_model=MemberOut, dependencies=[Depends(require_permission("edit_members"))])
-def update_member(member_id: int, payload: UpdateMemberRequest, db: Session = Depends(get_db)):
-    return controller.update_member(db, member_id, payload)
+def update_member(member_id: int, payload: UpdateMemberRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return controller.update_member(db, member_id, payload, current_user.owner_id)
 
 
 @router.patch("/{member_id}/toggle-status", response_model=MemberOut, dependencies=[Depends(require_permission("activate_deactivate_members"))])
-def toggle_status(member_id: int, db: Session = Depends(get_db)):
-    return controller.toggle_status(db, member_id)
+def toggle_status(member_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return controller.toggle_status(db, member_id, current_user.owner_id)
 
 
 @router.delete("/{member_id}", dependencies=[Depends(require_permission("delete_members"))])
-def remove_member(member_id: int, db: Session = Depends(get_db)):
-    return controller.remove_member(db, member_id)
+def remove_member(member_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return controller.remove_member(db, member_id, current_user.owner_id)
