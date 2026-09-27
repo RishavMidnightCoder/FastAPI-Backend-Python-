@@ -12,6 +12,7 @@ from src.email.templates.otp_template import otp_email
 from src.email.templates.resend_otp_template import resend_otp_email
 from src.email.templates.signup_success_template import signup_success_email
 from src.team.model import Member, Role
+from src.utils.helper import hash_password, verify_password, create_access_token, create_refresh_token, decode_token
 
 
 def _get_or_create_owner_role(db: Session, owner_id: int) -> Role:
@@ -80,6 +81,27 @@ def create_user(db: Session, user: UserCreate):
     send_email(new_user.email, subject, html, text)
 
     return new_user
+
+
+
+def update_profile(db: Session, user: User, full_name: str) -> User:
+    full_name = full_name.strip()
+    if not full_name:
+        raise HTTPException(status_code=400, detail="Full name cannot be empty")
+    user.FullName = full_name
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def change_password(db: Session, user: User, current_password: str, new_password: str):
+    if not user.hashed_password or not verify_password(current_password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    if len(new_password) < 8:
+        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+    user.hashed_password = hash_password(new_password)
+    db.commit()
+    return {"message": "Password updated"}
 
 
 def _generate_and_store_otp(db: Session, email: str, is_resend: bool = False):

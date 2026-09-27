@@ -8,6 +8,7 @@ from src.utils.constant import ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME
 from src.users.dtos import UserCreate, UserOut, LoginRequest, VerifyOTPRequest, ResendOTPRequest
 from src.users.model import User
 from src.users import controller
+from src.users.dtos import UserCreate, UserOut, LoginRequest, VerifyOTPRequest, ResendOTPRequest, UpdateProfileRequest, ChangePasswordRequest
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -91,3 +92,12 @@ def revoke_all_sessions(response: Response, current_user: User = Depends(get_cur
     controller.revoke_all_sessions(db, current_user.id)
     clear_auth_cookies(response)
     return {"message": "Signed out of all devices"}
+
+@router.patch("/profile", response_model=UserOut)
+def update_profile(payload: UpdateProfileRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return controller.update_profile(db, current_user, payload.FullName)
+
+
+@router.post("/change-password")
+def change_password(payload: ChangePasswordRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return controller.change_password(db, current_user, payload.current_password, payload.new_password)

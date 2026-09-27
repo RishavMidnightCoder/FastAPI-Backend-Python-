@@ -48,3 +48,11 @@ class ResendOTPRequest(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+
+class UpdateProfileRequest(BaseModel):
+    FullName: str
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str    
