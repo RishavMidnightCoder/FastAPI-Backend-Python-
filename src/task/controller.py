@@ -8,6 +8,7 @@ from src.task.dtos import VALID_STATUSES, VALID_PRIORITIES
 from src.project.model import Project
 from src.team.model import Member
 from src.users.model import User
+from src.notification.controller import create_notification
 
 UPLOAD_DIR = "uploads/tasks"
 ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
@@ -78,7 +79,7 @@ def _serialize_task(db: Session, task: Task):
     }
 
 
-def create_task(db: Session, payload, owner_id: int):
+def create_task(db: Session, payload, owner_id: int, actor_user_id: int):
     _validate_status_priority(payload.status, payload.priority)
     project = _get_project_or_404(db, payload.project_id, owner_id)
     _validate_assignee(db, payload.assignee_id, owner_id)
@@ -99,6 +100,20 @@ def create_task(db: Session, payload, owner_id: int):
     db.add(task)
     db.commit()
     db.refresh(task)
+
+    if task.assignee_id:
+        row = (
+            db.query(Member, User)
+            .join(User, Member.user_id == User.id)
+            .filter(Member.id == task.assignee_id)
+            .first()
+        )
+        if row and row[1].id != actor_user_id:
+            create_notification(db, owner_id, row[1].id, "task_assigned", f"You were assigned to {task.code}: {task.title}")
+
+    if task.priority == "Critical" and actor_user_id != owner_id:
+        create_notification(db, owner_id, owner_id, "task_critical", f"{task.code} is now critical")
+
     return _serialize_task(db, task)
 
 
@@ -114,7 +129,7 @@ def get_task(db: Session, task_id: int, owner_id: int):
     return _serialize_task(db, task)
 
 
-def update_task(db: Session, task_id: int, payload, owner_id: int):
+def update_task(db: Session, task_id: int, payload, owner_id: int, actor_user_id: int):
     _validate_status_priority(payload.status, payload.priority)
     _get_project_or_404(db, payload.project_id, owner_id)
     _validate_assignee(db, payload.assignee_id, owner_id)
@@ -122,6 +137,10 @@ def update_task(db: Session, task_id: int, payload, owner_id: int):
     task = db.query(Task).filter(Task.id == task_id, Task.owner_id == owner_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+
+    previous_status = task.status
+    previous_assignee_id = task.assignee_id
+    previous_priority = task.priority
 
     task.title = payload.title
     task.description = payload.description
@@ -133,6 +152,23 @@ def update_task(db: Session, task_id: int, payload, owner_id: int):
 
     db.commit()
     db.refresh(task)
+
+    if task.assignee_id and task.assignee_id != previous_assignee_id:
+        row = (
+            db.query(Member, User)
+            .join(User, Member.user_id == User.id)
+            .filter(Member.id == task.assignee_id)
+            .first()
+        )
+        if row and row[1].id != actor_user_id:
+            create_notification(db, owner_id, row[1].id, "task_assigned", f"You were assigned to {task.code}: {task.title}")
+
+    if task.status == "Done" and previous_status != "Done" and actor_user_id != owner_id:
+        create_notification(db, owner_id, owner_id, "task_completed", f"{task.code} was marked done")
+
+    if task.priority == "Critical" and previous_priority != "Critical" and actor_user_id != owner_id:
+        create_notification(db, owner_id, owner_id, "task_critical", f"{task.code} is now critical")
+
     return _serialize_task(db, task)
 
 

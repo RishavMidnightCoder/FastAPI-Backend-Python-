@@ -9,6 +9,7 @@ from src.utils.constant import FRONTEND_BASE_URL
 from src.email.email_service import send_email
 from src.email.templates.invite_template import invite_email
 from src.email.templates.invite_cancel_template import invite_cancel_email
+from src.notification.controller import create_notification
 
 
 def _serialize_member(member, user, role):
@@ -89,6 +90,13 @@ def invite_member(db: Session, payload, current_user: User):
         subject, html, text = invite_email(inviter_name, payload.email, role.name, invite_link)
         send_email(payload.email, subject, html, text)
 
+        if current_user.id != current_user.owner_id:
+         create_notification(
+            db, current_user.owner_id, current_user.owner_id,
+            "member_invited",
+            f"{current_user.FullName or current_user.email} invited {payload.email}",
+        )
+
         return {"message": "Invite resent"}
 
     invite_token = secrets.token_urlsafe(32)
@@ -106,6 +114,13 @@ def invite_member(db: Session, payload, current_user: User):
 
     subject, html, text = invite_email(inviter_name, payload.email, role.name, invite_link)
     send_email(payload.email, subject, html, text)
+
+    if current_user.id != current_user.owner_id:
+        create_notification(
+            db, current_user.owner_id, current_user.owner_id,
+            "member_invited",
+            f"{current_user.FullName or current_user.email} invited {payload.email}",
+        )
 
     return {"message": "Invite sent"}
 

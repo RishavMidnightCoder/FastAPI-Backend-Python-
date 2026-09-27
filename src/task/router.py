@@ -14,7 +14,7 @@ router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
 @router.post("/", response_model=TaskOut)
 def create_task(task: TaskCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return controller.create_task(db, task, current_user.owner_id)
+    return controller.create_task(db, task, current_user.owner_id, current_user.id)
 
 @router.get("/", response_model=List[TaskOut])
 def list_tasks(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -26,7 +26,7 @@ def get_task(task_id: int, db: Session = Depends(get_db), current_user: User = D
 
 @router.patch("/{task_id}", response_model=TaskOut)
 def update_task(task_id: int, task: TaskUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return controller.update_task(db, task_id, task, current_user.owner_id)
+    return controller.update_task(db, task_id, task, current_user.owner_id, current_user.id)
 
 @router.delete("/{task_id}")
 def delete_task(task_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
