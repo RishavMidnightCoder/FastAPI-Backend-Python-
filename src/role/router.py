@@ -12,12 +12,12 @@ from src.role import controller
 router = APIRouter(prefix="/roles", tags=["Roles"])
 
 
-@router.post("/", response_model=RoleOut, dependencies=[Depends(require_permission("create_roles"))])
+@router.post("", response_model=RoleOut, dependencies=[Depends(require_permission("create_roles"))])
 def create_role(payload: RoleCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return controller.create_role(db, payload, current_user.owner_id)
 
 
-@router.get("/", response_model=List[RoleOut], dependencies=[Depends(require_permission("view_roles"))])
+@router.get("", response_model=List[RoleOut], dependencies=[Depends(require_permission("view_roles"))])
 def list_roles(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return controller.list_roles(db, current_user.owner_id)
 

@@ -12,11 +12,11 @@ from src.task.dtos import TaskAttachmentOut
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
-@router.post("/", response_model=TaskOut)
+@router.post("", response_model=TaskOut)
 def create_task(task: TaskCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return controller.create_task(db, task, current_user.owner_id, current_user.id)
 
-@router.get("/", response_model=List[TaskOut])
+@router.get("", response_model=List[TaskOut])
 def list_tasks(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return controller.list_tasks(db, current_user.owner_id)
 

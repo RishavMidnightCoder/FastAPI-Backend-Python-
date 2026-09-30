@@ -11,7 +11,7 @@ from src.notification import controller
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
 
 
-@router.get("/", response_model=List[NotificationOut])
+@router.get("", response_model=List[NotificationOut])
 def list_notifications(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return controller.list_notifications(db, current_user.owner_id, current_user.id)
 

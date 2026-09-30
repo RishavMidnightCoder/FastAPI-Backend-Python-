@@ -12,7 +12,7 @@ from src.team import controller
 router = APIRouter(prefix="/members", tags=["Members"])
 
 
-@router.get("/", response_model=List[MemberOut], dependencies=[Depends(require_permission("view_members"))])
+@router.get("", response_model=List[MemberOut], dependencies=[Depends(require_permission("view_members"))])
 def list_members(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return controller.list_members(db, current_user.owner_id)
 

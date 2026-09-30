@@ -22,7 +22,7 @@ def update_workspace_name(payload: UpdateWorkspaceNameRequest, db: Session = Dep
     return controller.get_overview(db, current_user.owner_id)
 
 
-@router.delete("/")
+@router.delete("")
 def delete_workspace(payload: DeleteWorkspaceRequest, response: Response, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     if current_user.id != current_user.owner_id:
         raise HTTPException(status_code=403, detail="Only the workspace owner can delete the workspace")

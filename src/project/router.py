@@ -10,11 +10,11 @@ from src.project import controller
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
 
-@router.post("/", response_model=ProjectOut)
+@router.post("", response_model=ProjectOut)
 def create_project(payload: ProjectCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return controller.create_project(db, payload, current_user.owner_id)
 
-@router.get("/", response_model=List[ProjectOut])
+@router.get("", response_model=List[ProjectOut])
 def list_projects(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return controller.list_projects(db, current_user.owner_id)
 
